@@ -324,3 +324,14 @@ html, body, #root {
 }
 
 .login-btn:active { transform: translateY(0); }
+.login-success {
+  text-align: center;
+  padding: 20px 0;
+  animation: cardIn 0.4s ease;
+}
+
+.login-success p {
+  font-size: 16px;
+  font-weight: 600;
+  color: #5b21b6;
+}
