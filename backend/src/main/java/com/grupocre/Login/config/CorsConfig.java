@@ -1,4 +1,4 @@
-package com.grupocre.Login.Config;
+package com.grupocre.Login.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
