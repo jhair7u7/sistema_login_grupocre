@@ -2,6 +2,8 @@ package com.grupocre.Login.Service;
 
 import com.grupocre.Login.Dto.JwtResponse;
 import com.grupocre.Login.Dto.LoginRequest;
+import com.grupocre.Login.Dto.RegisterRequest;
+import com.grupocre.Login.Models.Role;
 import com.grupocre.Login.Models.User;
 import com.grupocre.Login.Repository.UserRepository;
 import com.grupocre.Login.Security.JwtUtils;
@@ -76,5 +78,27 @@ public class AuthService {
         user.setBloqueado(false); // Desbloquea la cuenta al cambiar contraseña
         user.setIntentosFallidos(0);
         userRepository.save(user);
+    }
+    public String registerUser(RegisterRequest request) {
+        // Validar si el username ya existe
+        if (userRepository.existsByUsername(request.getUsername())) {
+            throw new RuntimeException("Error: El nombre de usuario ya está en uso.");
+        }
+
+        // Validar si el email ya existe
+        if (userRepository.existsByEmail(request.getEmail())) {
+            throw new RuntimeException("Error: El correo electrónico ya está registrado.");
+        }
+
+        // Crear el nuevo usuario con rol USER por defecto y clave encriptada
+        User newUser = new User(
+                request.getUsername(),
+                request.getEmail(),
+                passwordEncoder.encode(request.getPassword()),
+                Role.USER
+        );
+
+        userRepository.save(newUser);
+        return "Usuario registrado exitosamente.";
     }
 }
