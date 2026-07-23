@@ -5,13 +5,13 @@ import { loginRequest } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import "./Login.css";
 
-export default function Login() {
+export default function Login({ abrirRecuperar }) {
   const [form, setForm] = useState({ email: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
   const [alert, setAlert] = useState(null);
   const [failedAttempts, setFailedAttempts] = useState(0);
   const [loginSuccess, setLoginSuccess] = useState(false);
-  const { login } = useAuth();
+  const { login, logout } = useAuth();
 
   const handleChange = (e) =>
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -99,10 +99,22 @@ export default function Login() {
         </div>
 
         {loginSuccess ? (
-          <div className="login-success">
-            <p>✅ Inicio de sesión exitoso</p>
-          </div>
-        ) : (
+  <div className="login-success">
+
+    <p>✅ Inicio de sesión exitoso</p>
+
+    <button
+      className="login-btn"
+     onClick={() => {
+    logout();
+    setLoginSuccess(false);
+}}
+    >
+      Cerrar sesión
+    </button>
+
+  </div>
+) : (
           <form onSubmit={handleSubmit} className="login-form">
             {alert && (
               <Alert type={alert.type} title={alert.title} message={alert.message} />
@@ -140,9 +152,16 @@ export default function Login() {
               </div>
             </div>
 
-            <a href="/recuperar" className="forgot-link">
-              ¿Olvidaste tu contraseña?
-            </a>
+           <a
+             href="#"
+            className="forgot-link"
+            onClick={(e) => {
+              e.preventDefault();
+              abrirRecuperar();
+            }}
+            >
+               ¿Olvidaste tu contraseña?
+          </a>
 
             <button type="submit" className="login-btn">
               Iniciar sesión
