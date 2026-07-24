@@ -2,20 +2,22 @@ package com.grupocre.Login.entity;
 
 
 import jakarta.persistence.*;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "roles")
-@Getter @Setter
+@Data
 @NoArgsConstructor @AllArgsConstructor
-@Builder
-public class Rol {
+public class Role {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private Integer id;
 
-    @Column(unique = true, nullable = false, length = 50)
+    @Column(nullable = false, unique = true, length = 50)
     private String nombre;
 
+    @Column(length = 255)
     private String descripcion;
 }

@@ -3,12 +3,9 @@ package com.grupocre.Login.dto;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 
-import java.time.LocalDateTime;
-
 @Data
 @AllArgsConstructor
-public class ApiError {
-    private int status;
+public class TokenResponse {
+    private String token;
     private String message;
-    private LocalDateTime timestamp;
 }

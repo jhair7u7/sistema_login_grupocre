@@ -4,10 +4,9 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
-// ForgotPasswordRequest.java
 @Data
-public class ForgotPasswordRequest {
-    @Email
-    @NotBlank
+public class RecoveryRequest {
+    @Email(message = "Debe ser un correo electrónico válido")
+    @NotBlank(message = "Se requiere correo electrónico")
     private String email;
 }

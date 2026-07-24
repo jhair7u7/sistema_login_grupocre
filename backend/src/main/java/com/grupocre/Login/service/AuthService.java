@@ -1,168 +1,194 @@
 package com.grupocre.Login.service;
 
 
-import com.grupocre.Login.dto.*;
-import com.grupocre.Login.entity.Rol;
-import com.grupocre.Login.entity.Usuario;
-import com.grupocre.Login.exception.CustomException;
-import com.grupocre.Login.repository.RolRepository;
-import com.grupocre.Login.repository.UsuarioRepository;
-import com.grupocre.Login.security.JwtProvider;
-import com.grupocre.Login.security.TokenBlacklistService;
-import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.authentication.LockedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import com.grupocre.Login.config.JwtUtil;
+import com.grupocre.Login.dto.*;
+import com.grupocre.Login.entity.*;
+import com.grupocre.Login.entity.enums.EventType;
+import com.grupocre.Login.entity.enums.UserStatus;
+import com.grupocre.Login.exception.AccountBlockedException;
+import com.grupocre.Login.exception.BadCredentialsException;
+import com.grupocre.Login.exception.CustomException;
+import com.grupocre.Login.repository.*;
 
 import java.time.LocalDateTime;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.Optional;
 
 @Service
-@RequiredArgsConstructor
 public class AuthService {
 
-    private final UsuarioRepository usuarioRepository;
-    private final RolRepository rolRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final JwtProvider jwtProvider;
-    private final TokenBlacklistService tokenBlacklistService;
+    private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
 
-    @Value("${app.security.max-login-attempts}")
-    private int maxAttempts;
+    @Autowired
+    private UserRepository userRepository;
 
-    @Value("${app.security.lock-duration-minutes}")
-    private int lockDurationMinutes;
+    @Autowired
+    private RoleRepository roleRepository;
 
-    public AuthResponse register(RegisterRequest dto) {
-        if (usuarioRepository.findByUsernameOrEmail(dto.getUsername(), dto.getUsername()).isPresent()) {
-            throw new CustomException("El username ya está en uso");
+    @Autowired
+    private SessionTokenRepository sessionTokenRepository;
+
+    @Autowired
+    private AccessLogRepository accessLogRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private AuthenticationManager authenticationManager;
+
+    @Autowired
+    private JwtUtil jwtUtil;
+
+    @Autowired
+    private RecoveryService recoveryService;
+
+    @Value("${app.security.max-failed-attempts}")
+    private int maxFailedAttempts;
+
+    @Transactional
+    public User register(RegisterRequest request, String ip) {
+        if (userRepository.findByEmail(request.getEmail()).isPresent()) {
+            throw new CustomException("Correo electrónico ya registrado");
         }
-        if (usuarioRepository.findByEmail(dto.getEmail()).isPresent()) {
-            throw new CustomException("El email ya está registrado");
+        if (userRepository.findByUsername(request.getUsername()).isPresent()) {
+            throw new CustomException("Nombre de usuario ya está en uso");
         }
 
-        Set<Rol> roles = new HashSet<>();
-        roles.add(rolRepository.findByNombre("ROLE_USER")
-                .orElseThrow(() -> new RuntimeException("Rol por defecto no encontrado")));
-        if (dto.isAdmin()) {
-            roles.add(rolRepository.findByNombre("ROLE_ADMIN")
-                    .orElseThrow(() -> new RuntimeException("Rol ADMIN no encontrado")));
-        }
+        Role userRole = roleRepository.findByNombre("USUARIO")
+                .orElseThrow(() -> new CustomException("USUARIO rol no encontrado en la base de datos"));
 
-        Usuario usuario = Usuario.builder()
-                .username(dto.getUsername())
-                .email(dto.getEmail())
-                .password(passwordEncoder.encode(dto.getPassword()))
-                .nombre(dto.getNombre())
-                .apellido(dto.getApellido())
-                .activo(true)
-                .bloqueado(false)
-                .intentosFallidos(0)
-                .roles(roles)
+        User user = User.builder()
+                .nombre(request.getNombre())
+                .apellido(request.getApellido())
+                .email(request.getEmail())
+                .username(request.getUsername())
+                .passwordHash(passwordEncoder.encode(request.getPassword()))
+                .role(userRole)
+                .estado(UserStatus.ACTIVO)
                 .build();
 
-        usuario = usuarioRepository.save(usuario);
-        String token = jwtProvider.generateToken(usuario.getId(), usuario.getUsername(),
-                usuario.getEmail(), mapRolesToList(usuario.getRoles()));
-
-        return buildAuthResponse(usuario, token);
+        user = userRepository.save(user);
+        return user;
     }
 
-    public AuthResponse login(LoginRequest dto) {
-        Usuario usuario = usuarioRepository.findByUsernameOrEmail(dto.getLogin(), dto.getLogin())
-                .orElseThrow(() -> new CustomException("Credenciales inválidas"));
+    @Transactional(noRollbackFor = {
+            com.grupocre.Login.exception.BadCredentialsException.class,
+            com.grupocre.Login.exception.AccountBlockedException.class
+    })
+    public TokenResponse login(LoginRequest request, String ip) {
+        String login = request.getLogin();
+        Optional<User> userOpt = userRepository.findByEmailOrUsername(login);
 
-        if (!usuario.getActivo()) {
-            throw new CustomException("Cuenta deshabilitada");
+        if (userOpt.isEmpty()) {
+            logAccess(null, EventType.INTENTO_FALLIDO, ip, false);
+            throw new BadCredentialsException("Credenciales inválidas");
         }
 
-        if (usuario.getBloqueado()) {
-            if (usuario.getFechaBloqueo() != null) {
-                LocalDateTime unlockTime = usuario.getFechaBloqueo().plusMinutes(lockDurationMinutes);
-                if (LocalDateTime.now().isBefore(unlockTime)) {
-                    throw new CustomException("Cuenta bloqueada temporalmente. Intente más tarde.");
-                } else {
-                    // Desbloquear automáticamente
-                    usuario.setBloqueado(false);
-                    usuario.setIntentosFallidos(0);
-                    usuario.setFechaBloqueo(null);
-                    usuarioRepository.save(usuario);
-                }
-            } else {
-                throw new CustomException("Cuenta bloqueada");
+        User user = userOpt.get();
+
+        if (user.getEstado() == UserStatus.BLOQUEADO) {
+            logAccess(user, EventType.INTENTO_FALLIDO, ip, false);
+            throw new AccountBlockedException("Cuenta bloqueada. Contacta al administrador.");
+        }
+
+        try {
+            Authentication auth = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(login, request.getPassword())
+            );
+
+            // Reset failed attempts on success
+            user.setFailedAttempts(0);
+            user.setEstado(UserStatus.ACTIVO);
+            user.setLockDate(null);
+            userRepository.save(user);
+
+            // Generate JWT and store session
+            String jwt = jwtUtil.generateToken(user);
+            SessionToken session = SessionToken.builder()
+                    .user(user)
+                    .token(jwt)
+                    .expirationDate(LocalDateTime.now().plusHours(1))
+                    .revoked(false)
+                    .build();
+            sessionTokenRepository.save(session);
+
+            logAccess(user, EventType.LOGIN, ip, true);
+            return new TokenResponse(jwt, "Inicio de sesión exitoso");
+
+        } catch (org.springframework.security.authentication.BadCredentialsException e) {
+            user.setFailedAttempts(user.getFailedAttempts() + 1);
+            if (user.getFailedAttempts() >= maxFailedAttempts) {
+                user.setEstado(UserStatus.BLOQUEADO);
+                user.setLockDate(LocalDateTime.now());
+                logAccess(user, EventType.BLOQUEO, ip, false);
             }
+            userRepository.save(user);
+            logAccess(user, EventType.INTENTO_FALLIDO, ip, false);
+            throw new com.grupocre.Login.exception.BadCredentialsException("Credenciales inválidas");
+        } catch (org.springframework.security.authentication.DisabledException e) {
+            logger.warn("El usuario deshabilitado intentó iniciar sesión: {}", user.getEmail());
+            logAccess(user, EventType.INTENTO_FALLIDO, ip, false);
+            throw new com.grupocre.Login.exception.BadCredentialsException("Credenciales inválidas");
+        } catch (org.springframework.security.authentication.LockedException e) {
+            logger.warn("El usuario bloqueado trató de iniciar sesión: {}", user.getEmail());
+            logAccess(user, EventType.INTENTO_FALLIDO, ip, false);
+            throw new AccountBlockedException("Account locked. Contact the administrator.");
+        } catch (Exception e) {
+            logger.error("Error inesperado durante el inicio de sesión del usuario: {}", user.getEmail(), e);
+            logAccess(user, EventType.INTENTO_FALLIDO, ip, false);
+            throw new CustomException("Ocurrió un error inesperado. Por favor, inténtalo de nuevo más tarde.");
         }
-
-        if (!passwordEncoder.matches(dto.getPassword(), usuario.getPassword())) {
-            int newAttempts = usuario.getIntentosFallidos() + 1;
-            usuario.setIntentosFallidos(newAttempts);
-            if (newAttempts >= maxAttempts) {
-                usuario.setBloqueado(true);
-                usuario.setFechaBloqueo(LocalDateTime.now());
-            }
-            usuarioRepository.save(usuario);
-            throw new CustomException("Credenciales inválidas");
-        }
-
-        // Login exitoso: resetear intentos
-        usuario.setIntentosFallidos(0);
-        usuario.setBloqueado(false);
-        usuario.setFechaBloqueo(null);
-        usuarioRepository.save(usuario);
-
-        String token = jwtProvider.generateToken(usuario.getId(), usuario.getUsername(),
-                usuario.getEmail(), mapRolesToList(usuario.getRoles()));
-
-        return buildAuthResponse(usuario, token);
     }
 
+    public void forgotPassword(RecoveryRequest request) {
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new CustomException("Si el correo existe, recibirás instrucciones"));
+        recoveryService.createAndSendToken(user);
+        logAccess(user, EventType.RECUPERACION, null, true);
+    }
+
+    @Transactional
+    public void resetPassword(ResetPasswordRequest request) {
+        recoveryService.resetPassword(request.getToken(), request.getNewPassword());
+    }
+
+    @Transactional
     public void logout(String token) {
-        if (token != null && jwtProvider.validateToken(token)) {
-            Date expiration = jwtProvider.getExpirationDate(token);
-            tokenBlacklistService.invalidate(token, expiration);
-        }
+        sessionTokenRepository.findByToken(token).ifPresent(session -> {
+            session.setRevoked(true);
+            sessionTokenRepository.save(session);
+
+            AccessLog log = AccessLog.builder()
+                    .user(session.getUser())
+                    .eventType(EventType.LOGOUT)
+                    .successful(true)
+                    .eventDate(LocalDateTime.now())
+                    .build();
+            accessLogRepository.save(log);
+        });
     }
 
-    public void forgotPassword(ForgotPasswordRequest dto) {
-        Optional<Usuario> optionalUser = usuarioRepository.findByEmail(dto.getEmail());
-        if (optionalUser.isEmpty()) {
-            // No revelar si el email existe
-            return;
-        }
-        Usuario usuario = optionalUser.get();
-        String token = UUID.randomUUID().toString();
-        usuario.setTokenRecuperacion(token);
-        usuario.setFechaExpiracionToken(LocalDateTime.now().plusMinutes(15));
-        usuarioRepository.save(usuario);
-
-        // Enviar email con token (simulado)
-        // emailService.sendRecoveryEmail(usuario.getEmail(), token);
-    }
-
-    public void resetPassword(ResetPasswordRequest dto) {
-        Usuario usuario = usuarioRepository
-                .findByTokenRecuperacionAndFechaExpiracionTokenAfter(dto.getToken(), LocalDateTime.now())
-                .orElseThrow(() -> new CustomException("Token inválido o expirado"));
-
-        usuario.setPassword(passwordEncoder.encode(dto.getNewPassword()));
-        usuario.setTokenRecuperacion(null);
-        usuario.setFechaExpiracionToken(null);
-        usuarioRepository.save(usuario);
-    }
-
-    private List<String> mapRolesToList(Set<Rol> roles) {
-        return roles.stream().map(Rol::getNombre).collect(Collectors.toList());
-    }
-
-    private AuthResponse buildAuthResponse(Usuario usuario, String token) {
-        return new AuthResponse(
-                token,
-                "Bearer",
-                usuario.getId(),
-                usuario.getUsername(),
-                usuario.getEmail(),
-                mapRolesToList(usuario.getRoles())
-        );
+    private void logAccess(User user, EventType eventType, String ip, boolean successful) {
+        AccessLog log = AccessLog.builder()
+                .user(user)
+                .eventType(eventType)
+                .ipAddress(ip)
+                .successful(successful)
+                .eventDate(LocalDateTime.now())
+                .build();
+        accessLogRepository.save(log);
     }
 }
