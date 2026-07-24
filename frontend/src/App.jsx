@@ -1,30 +1,38 @@
 import { useState } from "react";
 import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
+import AdminDashboard from "./pages/AdminDashboard";
 import { AuthProvider } from "./context/AuthContext";
 import "./App.css";
 
 function App() {
 
-  const [mostrarRecuperar, setMostrarRecuperar] = useState(false);
+  const [vista, setVista] = useState("login");
 
   return (
-
     <AuthProvider>
 
-      {
-        mostrarRecuperar
+      {vista === "login" && (
+        <Login
+          abrirRecuperar={() => setVista("recuperar")}
+          abrirAdministrador={() => setVista("admin")}
+        />
+      )}
 
-        ? <ForgotPassword volver={() => setMostrarRecuperar(false)} />
+      {vista === "recuperar" && (
+        <ForgotPassword
+          volver={() => setVista("login")}
+        />
+      )}
 
-        : <Login abrirRecuperar={() => setMostrarRecuperar(true)} />
-
-      }
+      {vista === "admin" && (
+        <AdminDashboard
+          volver={() => setVista("login")}
+        />
+      )}
 
     </AuthProvider>
-
   );
-
 }
 
 export default App;

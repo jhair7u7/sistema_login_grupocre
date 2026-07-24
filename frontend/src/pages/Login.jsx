@@ -1,17 +1,17 @@
 import { useState } from "react";
+import { useAuth } from "../context/AuthContext";
 import { Lock, Eye, EyeOff } from "lucide-react";
 import Alert from "../components/Alert";
 import { loginRequest } from "../services/api";
-import { useAuth } from "../context/AuthContext";
 import "./Login.css";
 
-export default function Login({ abrirRecuperar }) {
+export default function Login({ abrirRecuperar, abrirAdministrador }) {
   const [form, setForm] = useState({ email: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
   const [alert, setAlert] = useState(null);
-  const [failedAttempts, setFailedAttempts] = useState(0);
   const [loginSuccess, setLoginSuccess] = useState(false);
-  const { login, logout } = useAuth();
+
+  const { login, logout, usuarios, aumentarIntentos, reiniciarIntentos } = useAuth();
 
   const handleChange = (e) =>
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -21,6 +21,7 @@ export default function Login({ abrirRecuperar }) {
 
     const email = form.email.trim();
     const password = form.password.trim();
+    const usuario = usuarios.find((u) => u.email === email);
 
     if (!email || !password) {
       setAlert({
@@ -32,6 +33,7 @@ export default function Login({ abrirRecuperar }) {
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
     if (!emailRegex.test(email)) {
       setAlert({
         type: "warning",
@@ -41,99 +43,142 @@ export default function Login({ abrirRecuperar }) {
       return;
     }
 
-    if (failedAttempts >= 3) {
+    if (usuario?.bloqueado) {
       setAlert({
         type: "locked",
         title: "Cuenta bloqueada",
-        message: "Cuenta bloqueada por intentos fallidos. Contacta al administrador.",
+        message:
+          "Cuenta bloqueada por intentos fallidos. Contacta al administrador.",
       });
       return;
     }
 
     try {
       const response = await loginRequest(email, password);
+
       console.log("Login exitoso:", response.data);
+
       setAlert(null);
-      setFailedAttempts(0);
+      reiniciarIntentos(email);
+
       login(response.data.token);
       setLoginSuccess(true);
+
     } catch (error) {
-      const validEmail = "usuario@grupocree.pe";
-      const validPassword = "123456";
 
-      if (email !== validEmail || password !== validPassword) {
-        const nextAttempts = failedAttempts + 1;
-        setFailedAttempts(nextAttempts);
+    const usuarioEncontrado = usuarios.find(
+  (u) => u.email === email
+);
 
-        if (nextAttempts >= 3) {
-          setAlert({
-            type: "locked",
-            title: "Cuenta bloqueada",
-            message: "Cuenta bloqueada por intentos fallidos. Contacta al administrador.",
-          });
-        } else {
-          setAlert({
-            type: "invalid",
-            title: "Credenciales inválidas",
-            message: "Correo o contraseña incorrectos.",
-          });
-        }
-        return;
-      }
+if (!usuarioEncontrado) {
+  setAlert({
+    type: "invalid",
+    title: "Credenciales inválidas",
+    message: "Correo o contraseña incorrectos.",
+  });
+  return;
+}
 
-      console.log("Login simulado exitoso (sin backend aún)", form);
-      login("token-simulado-123");
-      setLoginSuccess(true);
+if (usuarioEncontrado.password !== password) {
+
+  aumentarIntentos(email);
+
+  const siguientesIntentos = usuarioEncontrado.intentos + 1;
+
+  if (siguientesIntentos >= 3) {
+    setAlert({
+      type: "locked",
+      title: "Cuenta bloqueada",
+      message:
+        "Cuenta bloqueada por intentos fallidos. Contacta al administrador.",
+    });
+  } else {
+    setAlert({
+      type: "invalid",
+      title: "Credenciales inválidas",
+      message: "Correo o contraseña incorrectos.",
+    });
+  }
+
+  return;
+}
+
+reiniciarIntentos(email);
+
+setAlert(null);
+
+if (usuarioEncontrado.rol === "ADMIN") {
+  login("admin-token");
+  abrirAdministrador();
+  return;
+}
+
+login("token-simulado-123");
+setLoginSuccess(true);
+
+
+
     }
   };
 
   return (
     <div className="login-wrapper">
       <div className="login-card">
+
         <div className="login-header">
           <div className="login-logo">
             <Lock size={28} strokeWidth={2.2} />
           </div>
+
           <h1>Bienvenido</h1>
           <p>Inicia sesión para continuar</p>
         </div>
 
         {loginSuccess ? (
-  <div className="login-success">
+          <div className="login-success">
 
-    <p>✅ Inicio de sesión exitoso</p>
+            <p>✅ Inicio de sesión exitoso</p>
 
-    <button
-      className="login-btn"
-     onClick={() => {
-    logout();
-    setLoginSuccess(false);
-}}
-    >
-      Cerrar sesión
-    </button>
+            <button
+              className="login-btn"
+              onClick={() => {
+                logout();
+                setLoginSuccess(false);
+              }}
+            >
+              Cerrar sesión
+            </button>
 
-  </div>
-) : (
+          </div>
+        ) : (
           <form onSubmit={handleSubmit} className="login-form">
+
             {alert && (
-              <Alert type={alert.type} title={alert.title} message={alert.message} />
+              <Alert
+                type={alert.type}
+                title={alert.title}
+                message={alert.message}
+              />
             )}
 
             <div className="input-group">
               <label>Correo electrónico</label>
+
               <input
                 type="email"
                 name="email"
-                placeholder="tucorreo@grupocree.pe"
+                placeholder="tucorreo@grupocre.pe"
                 value={form.email}
                 onChange={handleChange}
               />
             </div>
 
             <div className="input-group password-group">
+
               <label>Contraseña</label>
+
               <div className="password-input-wrapper">
+
                 <input
                   type={showPassword ? "text" : "password"}
                   name="password"
@@ -141,35 +186,47 @@ export default function Login({ abrirRecuperar }) {
                   value={form.password}
                   onChange={handleChange}
                 />
+
                 <button
                   type="button"
                   className="password-toggle-btn"
                   onClick={() => setShowPassword((state) => !state)}
-                  aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                  aria-label={
+                    showPassword
+                      ? "Ocultar contraseña"
+                      : "Mostrar contraseña"
+                  }
                 >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  {showPassword ? (
+                    <EyeOff size={18} />
+                  ) : (
+                    <Eye size={18} />
+                  )}
                 </button>
+
               </div>
+
             </div>
 
-           <a
-             href="#"
-            className="forgot-link"
-            onClick={(e) => {
-              e.preventDefault();
-              abrirRecuperar();
-            }}
+            <a
+              href="#"
+              className="forgot-link"
+              onClick={(e) => {
+                e.preventDefault();
+                abrirRecuperar();
+              }}
             >
-               ¿Olvidaste tu contraseña?
-          </a>
+              ¿Olvidaste tu contraseña?
+            </a>
 
             <button type="submit" className="login-btn">
               Iniciar sesión
             </button>
+
           </form>
         )}
+
       </div>
     </div>
   );
-  
 }
