@@ -167,18 +167,23 @@ public class AuthService {
 
     @Transactional
     public void logout(String token) {
-        sessionTokenRepository.findByToken(token).ifPresent(session -> {
-            session.setRevoked(true);
-            sessionTokenRepository.save(session);
+        try {
+            sessionTokenRepository.findByToken(token).ifPresent(session -> {
+                session.setRevoked(true);
+                sessionTokenRepository.save(session);
 
-            AccessLog log = AccessLog.builder()
-                    .user(session.getUser())
-                    .eventType(EventType.LOGOUT)
-                    .successful(true)
-                    .eventDate(LocalDateTime.now())
-                    .build();
-            accessLogRepository.save(log);
-        });
+                AccessLog log = AccessLog.builder()
+                        .user(session.getUser())
+                        .eventType(EventType.LOGOUT)
+                        .successful(true)
+                        .eventDate(LocalDateTime.now())
+                        .build();
+                accessLogRepository.save(log);
+            });
+        } catch (Exception e) {
+            logger.error("Error during logout for token [{}...]: {}", token.substring(0, Math.min(token.length(), 20)), e.getMessage());
+            throw new CustomException("No se pudo cerrar la sesión, inténtalo más tarde.");
+        }
     }
 
     private void logAccess(User user, EventType eventType, String ip, boolean successful) {
