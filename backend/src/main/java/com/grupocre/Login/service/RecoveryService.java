@@ -83,7 +83,7 @@ public class RecoveryService {
         message.setSubject("Recuperación de contraseña - BDCRE");
         message.setText("Para restablecer tu contraseña, usa el siguiente token:\n\n"
                 + token + "\n\n"
-                + "Este token expira en " + tokenExpirationMinutes + " minutos.");
+                + "Este token expira en " + tokenExpirationMinutes + " minutos. Si no solicitaste este cambio, ignora este correo.");
         mailSender.send(message);
     }
 }
