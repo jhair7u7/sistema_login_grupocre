@@ -1,20 +1,27 @@
 import { useState } from "react";
+import { useAuth } from "../context/AuthContext";
 import { Lock, Eye, EyeOff } from "lucide-react";
 import Alert from "../components/Alert";
-import { loginRequest } from "../services/api";
-import { useAuth } from "../context/AuthContext";
+import { loginRequest, logoutRequest } from "../services/api";
 import "./Login.css";
 
-export default function Login() {
-  const [form, setForm] = useState({ email: "", password: "" });
+export default function Login({ abrirRecuperar, abrirAdministrador, abrirRegistro, }) {
+  const [form, setForm] = useState({
+    email: "",
+    password: "",
+  });
+
   const [showPassword, setShowPassword] = useState(false);
   const [alert, setAlert] = useState(null);
-  const [failedAttempts, setFailedAttempts] = useState(0);
   const [loginSuccess, setLoginSuccess] = useState(false);
-  const { login } = useAuth();
+
+  const { login, logout, isAdmin } = useAuth();
 
   const handleChange = (e) =>
-    setForm({ ...form, [e.target.name]: e.target.value });
+    setForm({
+      ...form,
+      [e.target.name]: e.target.value,
+    });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -31,97 +38,114 @@ export default function Login() {
       return;
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      setAlert({
-        type: "warning",
-        title: "Correo inválido",
-        message: "Ingresa un correo electrónico con formato válido.",
-      });
-      return;
-    }
-
-    if (failedAttempts >= 3) {
-      setAlert({
-        type: "locked",
-        title: "Cuenta bloqueada",
-        message: "Cuenta bloqueada por intentos fallidos. Contacta al administrador.",
-      });
-      return;
-    }
-
     try {
       const response = await loginRequest(email, password);
-      console.log("Login exitoso:", response.data);
-      setAlert(null);
-      setFailedAttempts(0);
+
       login(response.data.token);
-      setLoginSuccess(true);
-    } catch (error) {
-      const validEmail = "usuario@grupocree.pe";
-      const validPassword = "123456";
 
-      if (email !== validEmail || password !== validPassword) {
-        const nextAttempts = failedAttempts + 1;
-        setFailedAttempts(nextAttempts);
+      setAlert(null);
 
-        if (nextAttempts >= 3) {
-          setAlert({
-            type: "locked",
-            title: "Cuenta bloqueada",
-            message: "Cuenta bloqueada por intentos fallidos. Contacta al administrador.",
-          });
-        } else {
-          setAlert({
-            type: "invalid",
-            title: "Credenciales inválidas",
-            message: "Correo o contraseña incorrectos.",
-          });
-        }
+      // Leer el rol directamente del JWT
+      const payload = JSON.parse(atob(response.data.token.split(".")[1]));
+
+      if (payload.rol === "ADMINISTRADOR") {
+        abrirAdministrador();
         return;
       }
 
-      console.log("Login simulado exitoso (sin backend aún)", form);
-      login("token-simulado-123");
       setLoginSuccess(true);
+
+    } catch (error) {
+
+      const mensaje =
+        error.response?.data?.error ||
+        error.response?.data?.message ||
+        error.response?.data?.mensaje ||
+        "Credenciales inválidas.";
+
+      if (
+        mensaje.toLowerCase().includes("bloqueada") ||
+        mensaje.toLowerCase().includes("blocked")
+      ) {
+        setAlert({
+          type: "locked",
+          title: "Cuenta bloqueada",
+          message: mensaje,
+        });
+      } else {
+        setAlert({
+          type: "invalid",
+          title: "Error",
+          message: mensaje,
+        });
+      }
     }
+  };
+
+  const cerrarSesion = async () => {
+    try {
+      await logoutRequest();
+    } catch (e) {}
+
+    logout();
+    setLoginSuccess(false);
   };
 
   return (
     <div className="login-wrapper">
       <div className="login-card">
+
         <div className="login-header">
           <div className="login-logo">
             <Lock size={28} strokeWidth={2.2} />
           </div>
+
           <h1>Bienvenido</h1>
           <p>Inicia sesión para continuar</p>
         </div>
 
         {loginSuccess ? (
           <div className="login-success">
+
             <p>✅ Inicio de sesión exitoso</p>
+
+            <button
+              className="login-btn"
+              onClick={cerrarSesion}
+            >
+              Cerrar sesión
+            </button>
+
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="login-form">
+
             {alert && (
-              <Alert type={alert.type} title={alert.title} message={alert.message} />
+              <Alert
+                type={alert.type}
+                title={alert.title}
+                message={alert.message}
+              />
             )}
 
             <div className="input-group">
               <label>Correo electrónico</label>
+
               <input
                 type="email"
                 name="email"
-                placeholder="tucorreo@grupocree.pe"
+                placeholder="tucorreo@grupocre.pe"
                 value={form.email}
                 onChange={handleChange}
               />
             </div>
 
             <div className="input-group password-group">
+
               <label>Contraseña</label>
+
               <div className="password-input-wrapper">
+
                 <input
                   type={showPassword ? "text" : "password"}
                   name="password"
@@ -129,28 +153,55 @@ export default function Login() {
                   value={form.password}
                   onChange={handleChange}
                 />
+
                 <button
                   type="button"
                   className="password-toggle-btn"
-                  onClick={() => setShowPassword((state) => !state)}
-                  aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                  onClick={() => setShowPassword(!showPassword)}
                 >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
+
               </div>
+
             </div>
 
-            <a href="/recuperar" className="forgot-link">
+            <a
+              href="#"
+              className="forgot-link"
+              onClick={(e) => {
+                e.preventDefault();
+                abrirRecuperar();
+              }}
+            >
               ¿Olvidaste tu contraseña?
             </a>
 
-            <button type="submit" className="login-btn">
+            <button
+              type="submit"
+              className="login-btn"
+            >
               Iniciar sesión
             </button>
+
+            <div style={{ textAlign: "center", marginTop: "15px" }}>
+              <span>¿No tienes una cuenta? </span>
+              <span
+                onClick={abrirRegistro}
+                style={{
+                color: "#2563eb",
+                cursor: "pointer",
+                fontWeight: "bold",
+              }}
+            >
+              Registrarse
+            </span>
+          </div>
+
           </form>
         )}
+
       </div>
     </div>
   );
-  
 }
