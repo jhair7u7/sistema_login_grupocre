@@ -2,26 +2,32 @@ import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Lock, Eye, EyeOff } from "lucide-react";
 import Alert from "../components/Alert";
-import { loginRequest } from "../services/api";
+import { loginRequest, logoutRequest } from "../services/api";
 import "./Login.css";
 
-export default function Login({ abrirRecuperar, abrirAdministrador }) {
-  const [form, setForm] = useState({ email: "", password: "" });
+export default function Login({ abrirRecuperar, abrirAdministrador, abrirRegistro, }) {
+  const [form, setForm] = useState({
+    email: "",
+    password: "",
+  });
+
   const [showPassword, setShowPassword] = useState(false);
   const [alert, setAlert] = useState(null);
   const [loginSuccess, setLoginSuccess] = useState(false);
 
-  const { login, logout, usuarios, aumentarIntentos, reiniciarIntentos } = useAuth();
+  const { login, logout, isAdmin } = useAuth();
 
   const handleChange = (e) =>
-    setForm({ ...form, [e.target.name]: e.target.value });
+    setForm({
+      ...form,
+      [e.target.name]: e.target.value,
+    });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     const email = form.email.trim();
     const password = form.password.trim();
-    const usuario = usuarios.find((u) => u.email === email);
 
     if (!email || !password) {
       setAlert({
@@ -32,93 +38,57 @@ export default function Login({ abrirRecuperar, abrirAdministrador }) {
       return;
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    if (!emailRegex.test(email)) {
-      setAlert({
-        type: "warning",
-        title: "Correo inválido",
-        message: "Ingresa un correo electrónico con formato válido.",
-      });
-      return;
-    }
-
-    if (usuario?.bloqueado) {
-      setAlert({
-        type: "locked",
-        title: "Cuenta bloqueada",
-        message:
-          "Cuenta bloqueada por intentos fallidos. Contacta al administrador.",
-      });
-      return;
-    }
-
     try {
       const response = await loginRequest(email, password);
 
-      console.log("Login exitoso:", response.data);
+      login(response.data.token);
 
       setAlert(null);
-      reiniciarIntentos(email);
 
-      login(response.data.token);
+      // Leer el rol directamente del JWT
+      const payload = JSON.parse(atob(response.data.token.split(".")[1]));
+
+      if (payload.rol === "ADMINISTRADOR") {
+        abrirAdministrador();
+        return;
+      }
+
       setLoginSuccess(true);
 
     } catch (error) {
 
-    const usuarioEncontrado = usuarios.find(
-  (u) => u.email === email
-);
+      const mensaje =
+        error.response?.data?.error ||
+        error.response?.data?.message ||
+        error.response?.data?.mensaje ||
+        "Credenciales inválidas.";
 
-if (!usuarioEncontrado) {
-  setAlert({
-    type: "invalid",
-    title: "Credenciales inválidas",
-    message: "Correo o contraseña incorrectos.",
-  });
-  return;
-}
-
-if (usuarioEncontrado.password !== password) {
-
-  aumentarIntentos(email);
-
-  const siguientesIntentos = usuarioEncontrado.intentos + 1;
-
-  if (siguientesIntentos >= 3) {
-    setAlert({
-      type: "locked",
-      title: "Cuenta bloqueada",
-      message:
-        "Cuenta bloqueada por intentos fallidos. Contacta al administrador.",
-    });
-  } else {
-    setAlert({
-      type: "invalid",
-      title: "Credenciales inválidas",
-      message: "Correo o contraseña incorrectos.",
-    });
-  }
-
-  return;
-}
-
-reiniciarIntentos(email);
-
-setAlert(null);
-
-if (usuarioEncontrado.rol === "ADMIN") {
-  login("admin-token");
-  abrirAdministrador();
-  return;
-}
-
-login("token-simulado-123");
-setLoginSuccess(true);
-
-
-
+      if (
+        mensaje.toLowerCase().includes("bloqueada") ||
+        mensaje.toLowerCase().includes("blocked")
+      ) {
+        setAlert({
+          type: "locked",
+          title: "Cuenta bloqueada",
+          message: mensaje,
+        });
+      } else {
+        setAlert({
+          type: "invalid",
+          title: "Error",
+          message: mensaje,
+        });
+      }
     }
+  };
+
+  const cerrarSesion = async () => {
+    try {
+      await logoutRequest();
+    } catch (e) {}
+
+    logout();
+    setLoginSuccess(false);
   };
 
   return (
@@ -141,10 +111,7 @@ setLoginSuccess(true);
 
             <button
               className="login-btn"
-              onClick={() => {
-                logout();
-                setLoginSuccess(false);
-              }}
+              onClick={cerrarSesion}
             >
               Cerrar sesión
             </button>
@@ -190,18 +157,9 @@ setLoginSuccess(true);
                 <button
                   type="button"
                   className="password-toggle-btn"
-                  onClick={() => setShowPassword((state) => !state)}
-                  aria-label={
-                    showPassword
-                      ? "Ocultar contraseña"
-                      : "Mostrar contraseña"
-                  }
+                  onClick={() => setShowPassword(!showPassword)}
                 >
-                  {showPassword ? (
-                    <EyeOff size={18} />
-                  ) : (
-                    <Eye size={18} />
-                  )}
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
 
               </div>
@@ -219,9 +177,26 @@ setLoginSuccess(true);
               ¿Olvidaste tu contraseña?
             </a>
 
-            <button type="submit" className="login-btn">
+            <button
+              type="submit"
+              className="login-btn"
+            >
               Iniciar sesión
             </button>
+
+            <div style={{ textAlign: "center", marginTop: "15px" }}>
+              <span>¿No tienes una cuenta? </span>
+              <span
+                onClick={abrirRegistro}
+                style={{
+                color: "#2563eb",
+                cursor: "pointer",
+                fontWeight: "bold",
+              }}
+            >
+              Registrarse
+            </span>
+          </div>
 
           </form>
         )}

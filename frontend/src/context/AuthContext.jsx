@@ -1,93 +1,69 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 
-const AuthContext = createContext(null);
+const AuthContext = createContext();
+
+function parseJwt(token) {
+  try {
+    const base64 = token.split(".")[1];
+    const payload = JSON.parse(atob(base64));
+    return payload;
+  } catch (error) {
+    return null;
+  }
+}
 
 export function AuthProvider({ children }) {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const [token, setToken] = useState(localStorage.getItem("token"));
+  useEffect(() => {
+    const token = localStorage.getItem("token");
 
-  const [usuarios, setUsuarios] = useState([
-    {
-      id: 1,
-      email: "usuario@grupocre.pe",
-      password: "123456",
-      rol: "USER",
-      bloqueado: false,
-      intentos: 0,
-    },
-    {
-      id: 2,
-      email: "admin@grupocre.pe",
-      password: "admin123",
-      rol: "ADMIN",
-      bloqueado: false,
-      intentos: 0,
-    },
-  ]);
+    if (token) {
+      const payload = parseJwt(token);
 
-  const login = (newToken) => {
-    localStorage.setItem("token", newToken);
-    setToken(newToken);
+      if (payload) {
+        setUser({
+          id: payload.sub,
+          email: payload.email,
+          role: payload.rol,
+          token,
+        });
+      } else {
+        localStorage.removeItem("token");
+      }
+    }
+
+    setLoading(false);
+  }, []);
+
+  const login = (token) => {
+    localStorage.setItem("token", token);
+
+    const payload = parseJwt(token);
+
+    setUser({
+      id: payload.sub,
+      email: payload.email,
+      role: payload.rol,
+      token,
+    });
   };
 
   const logout = () => {
     localStorage.removeItem("token");
-    setToken(null);
-  };
-
-  const aumentarIntentos = (email) => {
-    setUsuarios((prev) =>
-      prev.map((usuario) => {
-        if (usuario.email !== email) return usuario;
-
-        const intentos = usuario.intentos + 1;
-
-        return {
-          ...usuario,
-          intentos,
-          bloqueado: intentos >= 3,
-        };
-      })
-    );
-  };
-
-  const reiniciarIntentos = (email) => {
-    setUsuarios((prev) =>
-      prev.map((usuario) =>
-        usuario.email === email
-          ? {
-              ...usuario,
-              intentos: 0,
-            }
-          : usuario
-      )
-    );
-  };
-
-  const reactivarUsuario = (email) => {
-    setUsuarios((prev) =>
-      prev.map((usuario) =>
-        usuario.email === email
-          ? {
-              ...usuario,
-              bloqueado: false,
-              intentos: 0,
-            }
-          : usuario
-      )
-    );
+    setUser(null);
   };
 
   return (
     <AuthContext.Provider
       value={{
-        token,
+        user,
         login,
         logout,
-        usuarios,
-        aumentarIntentos,
-        reiniciarIntentos,
-        reactivarUsuario,
+        loading,
+        isAuthenticated: !!user,
+        isAdmin: user?.role === "ADMINISTRADOR",
       }}
     >
       {children}
@@ -95,6 +71,4 @@ export function AuthProvider({ children }) {
   );
 }
 
-export function useAuth() {
-  return useContext(AuthContext);
-}
+export const useAuth = () => useContext(AuthContext);

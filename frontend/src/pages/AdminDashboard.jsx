@@ -1,36 +1,53 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import { logoutRequest } from "../services/api";
+import api from "../services/api";
+import "./Login.css";
 
 export default function AdminDashboard({ volver }) {
-
   const { logout } = useAuth();
 
-  const [usuarios, setUsuarios] = useState([
-    {
-      id: 1,
-      email: "usuario@grupocre.pe",
-      estado: "Bloqueado",
-    },
-    {
-      id: 2,
-      email: "carlos@grupocre.pe",
-      estado: "Bloqueado",
-    },
-    {
-      id: 3,
-      email: "admin@grupocre.pe",
-      estado: "Activo",
-    },
-  ]);
+  const [usuarios, setUsuarios] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const reactivarUsuario = (id) => {
-    setUsuarios(
-      usuarios.map((usuario) =>
-        usuario.id === id
-          ? { ...usuario, estado: "Activo" }
-          : usuario
-      )
-    );
+  const cargarUsuarios = async () => {
+    try {
+      const res = await api.get("/admin/users/blocked");
+      setUsuarios(res.data);
+    } catch (error) {
+      console.error(error);
+      alert("No se pudieron cargar los usuarios bloqueados.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    cargarUsuarios();
+  }, []);
+
+  const reactivarUsuario = async (id) => {
+    try {
+      await api.put(`/admin/users/${id}/unlock`);
+
+      alert("Usuario desbloqueado correctamente.");
+
+      cargarUsuarios();
+    } catch (error) {
+      alert(
+        error.response?.data?.message ||
+        "No fue posible desbloquear el usuario."
+      );
+    }
+  };
+
+  const cerrarSesion = async () => {
+    try {
+      await logoutRequest();
+    } catch (e) {}
+
+    logout();
+    volver();
   };
 
   return (
@@ -39,53 +56,47 @@ export default function AdminDashboard({ volver }) {
 
         <div className="login-header">
           <h1>🔐 Panel de Administración</h1>
-          <p>Administración de usuarios</p>
+          <p>Usuarios bloqueados</p>
         </div>
 
-        {usuarios.map((usuario) => (
-          <div
-            key={usuario.id}
-            style={{
-              border: "1px solid #ddd",
-              borderRadius: "8px",
-              padding: "12px",
-              marginBottom: "12px",
-            }}
-          >
-            <strong>{usuario.email}</strong>
+        {loading ? (
+          <p>Cargando...</p>
+        ) : usuarios.length === 0 ? (
+          <p>No existen usuarios bloqueados.</p>
+        ) : (
+          usuarios.map((usuario) => (
+            <div
+              key={usuario.id}
+              style={{
+                border: "1px solid #ddd",
+                borderRadius: "8px",
+                padding: "12px",
+                marginBottom: "12px",
+              }}
+            >
+              <strong>{usuario.email}</strong>
 
-            <p>
-              Estado:{" "}
-              <strong
-                style={{
-                  color:
-                    usuario.estado === "Activo"
-                      ? "green"
-                      : "red",
-                }}
-              >
-                {usuario.estado}
-              </strong>
-            </p>
+              <p>
+                Estado:
+                <strong style={{ color: "red", marginLeft: "5px" }}>
+                  BLOQUEADO
+                </strong>
+              </p>
 
-            {usuario.estado === "Bloqueado" && (
               <button
                 className="login-btn"
                 onClick={() => reactivarUsuario(usuario.id)}
               >
                 Reactivar usuario
               </button>
-            )}
-          </div>
-        ))}
+            </div>
+          ))
+        )}
 
         <button
           className="login-btn"
-          style={{ marginTop: "15px" }}
-          onClick={() => {
-            logout();
-            volver();
-          }}
+          style={{ marginTop: "20px" }}
+          onClick={cerrarSesion}
         >
           Cerrar sesión
         </button>

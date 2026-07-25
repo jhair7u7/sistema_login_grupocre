@@ -1,65 +1,108 @@
 .login-alert {
   display: flex;
   align-items: center;
-  flex-direction: row;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: rgba(196, 181, 253, 0.2);
-  border: 1px solid rgba(124, 58, 237, 0.35);
-  color: #3f2d6e;
-  font-size: 14px;
-  line-height: 1.3;
-  transition: all 0.3s ease;
-}
-
-.login-alert:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.12);
-  border-color: rgba(124, 58, 237, 0.5);
-}
-
-.login-alert.locked {
-  background: rgba(239, 68, 68, 0.15);
-  border: 1px solid rgba(239, 68, 68, 0.35);
-  color: #7f1d1d;
-}
-
-.login-alert.locked:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.12);
-  border-color: rgba(239, 68, 68, 0.5);
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  margin-bottom: 18px;
+  border-left: 5px solid;
+  animation: fadeIn .25s ease;
 }
 
 .login-alert svg {
   flex-shrink: 0;
-  color: #7c3aed;
-  width: 20px;
-  height: 20px;
-  min-width: 20px;
-}
-
-.login-alert.locked svg {
-  color: #dc2626;
 }
 
 .alert-content {
   display: flex;
   flex-direction: column;
-  gap: 1px;
 }
 
 .alert-title {
-  font-weight: 700;
-  color: #5b21b6;
-  font-size: 14px;
-}
-
-.login-alert.locked .alert-title {
-  color: #dc2626;
+  font-weight: bold;
+  margin-bottom: 2px;
 }
 
 .login-alert p {
   margin: 0;
-  font-size: 13px;
+}
+
+/* Simbolo de error */
+
+.login-alert.error,
+.login-alert.invalid {
+  background: #fdecea;
+  color: #b91c1c;
+  border-color: #dc2626;
+}
+
+.login-alert.error svg,
+.login-alert.invalid svg,
+.login-alert.error .alert-title,
+.login-alert.invalid .alert-title {
+  color: #dc2626;
+}
+
+/* Progreso exitoso */
+
+.login-alert.success {
+  background: #ecfdf5;
+  color: #166534;
+  border-color: #16a34a;
+}
+
+.login-alert.success svg,
+.login-alert.success .alert-title {
+  color: #16a34a;
+}
+
+/* Error */
+
+.login-alert.warning {
+  background: #fffbeb;
+  color: #92400e;
+  border-color: #f59e0b;
+}
+
+.login-alert.warning svg,
+.login-alert.warning .alert-title {
+  color: #f59e0b;
+}
+
+/* Cuenta bloqueada */
+
+.login-alert.locked {
+  background: #fff7ed;
+  color: #9a3412;
+  border-color: #ea580c;
+}
+
+.login-alert.locked svg,
+.login-alert.locked .alert-title {
+  color: #ea580c;
+}
+
+/*información del sistema*/
+
+.login-alert.info {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #2563eb;
+}
+
+.login-alert.info svg,
+.login-alert.info .alert-title {
+  color: #2563eb;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
